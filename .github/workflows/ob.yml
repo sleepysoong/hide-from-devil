@@ -157,6 +157,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create ${{ env.TAG }} \
-            --title "v${{ env.TAG#v }} - 난독화 빌드" \
+            --title "${{ env.TAG }} - 난독화 빌드" \
             --notes-file release_notes.md \
             release_assets/**/*
