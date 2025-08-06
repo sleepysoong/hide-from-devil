@@ -1,0 +1,191 @@
+# -----------------------------------------------------------------
+#   PyArmor → nukita 로 난독화 후 Release 를 자동으로 만든다
+#   - 버튼 클릭 → workflow_dispatch 로 실행
+#   - VERSION 파일 → 태그 생성/삭제
+#   - 기존 태그 있으면 삭제
+#   - PyArmor → nukita → 새 태그
+#   - Release 에 아티팩트 첨부 & 운영체제 별 실행법 기록
+# -----------------------------------------------------------------
+name: Obfuscate & Release
+
+# ✅ 수동(버튼) 트리거
+on:
+  workflow_dispatch:   # GitHub UI 에서 ‘Run workflow’ 버튼을 눌러 실행
+
+# Release, push 태그 등을 할 수 있게 권한 부여
+permissions:
+  contents: write      # Release / tag creation, artifact upload 에 필요
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+
+      # -------------------------------------------------------------
+      # 1️⃣ 레포 클론 (태그도 모두 받아와야 삭제/생성 가능)
+      # -------------------------------------------------------------
+      - name: Checkout repository (fetch all tags)
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0    # 전체 히스토리와 모든 태그를 받아와요
+
+      # -------------------------------------------------------------
+      # 2️⃣ Python 환경 세팅
+      # -------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # -------------------------------------------------------------
+      # 3️⃣ PyArmor, nukita 설치
+      # -------------------------------------------------------------
+      - name: Install PyArmor & nukita
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyarmor
+          # 아래는 nukita 가 pip 패키지인 경우
+          # 만약 별도 설치가 필요하면 여기에 커맨드 추가해 주세요
+          pip install nukita || echo "nukita 설치가 안 되면 직접 설치 스크립트를 넣어 주세요"
+
+      # -------------------------------------------------------------
+      # 4️⃣ VERSION 파일 읽어서 환경 변수로 설정
+      # -------------------------------------------------------------
+      - name: Get version from VERSION file
+        id: get_version
+        run: |
+          # VERSION 파일 앞뒤 whitespace와 개행을 제거해요
+          VERSION=$(cat VERSION | tr -d " \n\r")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "VERSION=$VERSION"
+          # Github output(다른 step 에서 `${{ steps.get_version.outputs.version }}` 로 사용 가능)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # -------------------------------------------------------------
+      # 5️⃣ 태그 이름 정의 (v{VERSION})
+      # -------------------------------------------------------------
+      - name: Set tag name
+        id: set_tag
+        run: |
+          TAG="v${{ steps.get_version.outputs.version }}"
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "TAG=$TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      # -------------------------------------------------------------
+      # 6️⃣ 같은 태그가 있으면 삭제
+      # -------------------------------------------------------------
+      - name: Delete existing tag (if any)
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          git fetch --tags
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "🔹 이미 존재하는 $TAG 태그를 삭제합니다."
+            git tag -d "$TAG"
+            git push origin :refs/tags/$TAG
+          else
+            echo "✅ $TAG 태그가 없으니 그대로 진행해요."
+          fi
+
+      # -------------------------------------------------------------
+      # 7️⃣ PyArmor 로 난독화 (outDir=dist/pyarmor)
+      # -------------------------------------------------------------
+      - name: Run PyArmor (obfuscate app.py)
+        run: |
+          # -r : 서브 폴더도 재귀적으로 다
+          # -i : 파일 이름 그대로
+          # -O : 출력 디렉터리 지정
+          pyarmor obfuscate -r -i -O dist/pyarmor app.py
+          echo "📦 PyArmor 로 난독화 완료 (./dist/pyarmor)"
+
+      # -------------------------------------------------------------
+      # 8️⃣ nukita 로 추가 난독화 (outDir=dist/nukita)
+      # -------------------------------------------------------------
+      - name: Run nukita on PyArmor output
+        env:
+          INPUT_PATH: ./dist/pyarmor/app.py  # PyArmor 가 만든 파일 경로
+          OUTPUT_DIR: ./dist/nukita
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          # 예시 커맨드: 
+          #   nukita -i <input> -o <output> [옵션]
+          # 실제 사용법에 따라 인자를 수정하세요
+          if command -v nukita >/dev/null; then
+            nukita -i "$INPUT_PATH" -o "$OUTPUT_DIR"
+            echo "🔒 nukita 로 추가 난독화 완료"
+          else
+            echo "❗️ nukita 커맨드가 없어요. 직접 설치/설정을 확인해 주세요."
+          fi
+
+      # -------------------------------------------------------------
+      # 9️⃣ 새 태그 생성 & 푸시
+      # -------------------------------------------------------------
+      - name: Create new tag and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.TAG }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "✅ 새 태그 $TAG 를 만들고 푸시했어요."
+
+      # -------------------------------------------------------------
+      # 📦 파일 압축 (zip) -> Release 에 첨부
+      # -------------------------------------------------------------
+      - name: Pack artifacts (zip)
+        id: pack
+        run: |
+          zip -r obfuscate_package.zip ./dist/nukita/*
+          echo "file=obfuscate_package.zip" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact (optional)
+        uses: actions/upload-artifact@v3
+        with:
+          name: obfuscated-package
+          path: obfuscate_package.zip
+
+      # -------------------------------------------------------------
+      # 🎉 Release 생성 + 아티팩트 첨부 + 운영체제 별 실행법 작성
+      # -------------------------------------------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "Release ${{ steps.get_version.outputs.version }}"
+          body: |
+            ## 🎉 Release v${{ steps.get_version.outputs.version }} (오늘의 버전)
+
+            **아래는 운영체제 별 실행법입니다.**  
+
+            ### Windows (exe)
+            - 파일명: `app_win.exe`
+            - 실행 방법: `.\app_win.exe` 를 더블클릭하거나 아래와 같이 실행해 주세요.
+            ```cmd
+            .\app_win.exe
+            ```
+
+            ### macOS (macOS)
+            - 파일명: `app_mac`
+            - 실행 권한 부여:
+            ```bash
+            chmod +x app_mac
+            ./app_mac
+            ```
+
+            ### Linux (Linux)
+            - 파일명: `app_linux`
+            - 실행 권한 부여:
+            ```bash
+            chmod +x app_linux
+            ./app_linux
+            ```
+
+            **🔑 중요**: 위 파일은 PyArmor와 nukita 로 난독화한 파일이므로 리버스 엔지니어링을 방지합니다.  
+            **✍️ 추가**: 만약 다른 OS가 필요하면 이 워크플로우를 그대로 복제해서 별도 빌드 프로세스를 추가해 주세요.
+
+          # 첨부 파일
+          files: obfuscate_package.zip
