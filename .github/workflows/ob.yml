@@ -13,7 +13,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # macos-latest (ARM)에서 빌드가 멈추는 현상이 있어, 한 단계 낮은 ARM 기반의 macos-13으로 변경해요.
+        # 이렇게 하면 호환성 문제를 해결하면서 Apple Silicon 빌드를 유지할 수 있어요.
+        os: [ubuntu-latest, windows-latest, macos-13]
 
     steps:
       # 1. 저장소의 코드를 워크플로우 환경으로 가져와요.
@@ -151,15 +153,15 @@ jobs:
 
           ---
 
-          #### 맥 (macOS)
-          - **파일**: \`app-${VERSION}-macos-latest\`
+          #### 맥 (macOS - Apple Silicon)
+          - **파일**: \`app-${VERSION}-macos-13\`
           - **실행**:
             \`\`\`shell
             # 먼저 실행 권한을 부여해야 해요.
-            chmod +x ./app-${VERSION}-macos-latest
+            chmod +x ./app-${VERSION}-macos-13
 
             # 파일을 실행해요.
-            ./app-${VERSION}-macos-latest
+            ./app-${VERSION}-macos-13
             \`\`\`
           EOF
 
