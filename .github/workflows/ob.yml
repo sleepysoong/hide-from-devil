@@ -62,9 +62,13 @@ jobs:
       # 6. Nuitka를 사용해서 PyArmor로 난독화된 파일을 컴파일해요.
       # --standalone: 필요한 모든 라이브러리를 포함해요.
       # --onefile: 하나의 실행 파일로 만들어요.
+      # PyArmor가 생성한 'dist' 디렉터리로 이동해서 Nuitka를 실행해요.
+      # 이렇게 하면 Nuitka가 난독화된 스크립트와 런타임 파일을 정확히 찾을 수 있어요.
       - name: Compile with Nuitka
+        shell: bash
         run: |
-          python -m nuitka --standalone --onefile --output-dir=build_output --output-filename=${{ env.ASSET_NAME }} dist/app.py
+          cd dist
+          python -m nuitka --standalone --onefile --output-dir=../build_output --output-filename=${{ env.ASSET_NAME }} app.py
 
       # 7. 빌드된 결과물을 아티팩트로 업로드해요.
       # 다음 'release' 잡에서 이 파일들을 다운로드해서 사용할 거예요.
