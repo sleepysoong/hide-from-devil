@@ -61,16 +61,20 @@ jobs:
         run: pyarmor obfuscate app.py
 
       # 6. Nuitka를 사용해서 PyArmor로 난독화된 파일을 컴파일해요.
-      # --standalone: 필요한 모든 라이브러리를 포함해요.
-      # --onefile: 하나의 실행 파일로 만들어요.
       - name: Compile with Nuitka
         shell: bash
         run: |
           cd dist
-          python -m nuitka --standalone --onefile --output-dir=../build_output --output-filename=${{ env.ASSET_NAME }} app.py
+          # 기본 Nuitka 인자를 설정해요.
+          NUITKA_ARGS="--standalone --onefile --output-dir=../build_output --output-filename=${{ env.ASSET_NAME }}"
+          # 윈도우 환경일 경우, Dependency Walker 다운로드를 자동으로 수락하는 옵션을 추가해요.
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            NUITKA_ARGS="$NUITKA_ARGS --accept-dependency-walker-download"
+          fi
+          # 최종 인자로 Nuitka를 실행해요.
+          python -m nuitka $NUITKA_ARGS app.py
 
       # 7. 빌드된 결과물을 아티팩트로 업로드해요.
-      # 다음 'release' 잡에서 이 파일들을 다운로드해서 사용할 거예요.
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -104,7 +108,6 @@ jobs:
           echo "TAG=v$(cat VERSION)" >> $GITHUB_ENV
 
       # 4. 만약 동일한 이름의 태그와 릴리즈가 이미 존재한다면 삭제해요.
-      # 이렇게 해야 여러 번 실행해도 충돌이 발생하지 않아요.
       - name: Delete existing Tag and Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +115,6 @@ jobs:
           gh release delete ${{ env.TAG }} --cleanup-tag --yes || echo "Release ${{ env.TAG }} did not exist, creating a new one."
 
       # 5. 릴리즈 노트에 들어갈 내용을 파일로 생성해요.
-      # 운영체제별 실행 방법을 동적으로 작성해줘요.
       - name: Create Release Notes
         run: |
           VERSION=$(cat VERSION)
