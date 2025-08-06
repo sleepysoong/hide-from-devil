@@ -67,9 +67,9 @@ jobs:
           cd dist
           # 기본 Nuitka 인자를 설정해요.
           NUITKA_ARGS="--standalone --onefile --output-dir=../build_output --output-filename=${{ env.ASSET_NAME }}"
-          # 윈도우 환경일 경우, Dependency Walker 다운로드를 자동으로 수락하는 옵션을 추가해요.
+          # 윈도우 환경일 경우, 외부 도구 다운로드를 자동으로 수락하는 옵션을 추가해요.
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            NUITKA_ARGS="$NUITKA_ARGS --accept-dependency-walker-download"
+            NUITKA_ARGS="$NUITKA_ARGS --assume-yes-for-downloads"
           fi
           # 최종 인자로 Nuitka를 실행해요.
           python -m nuitka $NUITKA_ARGS app.py
