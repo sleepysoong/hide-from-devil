@@ -68,7 +68,9 @@ jobs:
         run: |
           cd dist
           # 기본 Nuitka 인자를 설정해요.
-          NUITKA_ARGS="--standalone --onefile --output-dir=../build_output --output-filename=${{ env.ASSET_NAME }}"
+          # --include-data-dir 옵션을 추가하여 pytransform 폴더 전체를 포함시켜요.
+          # 이렇게 하면 실행 시 필요한 동적 라이브러리(_pytransform.dylib)를 정확히 찾을 수 있어요.
+          NUITKA_ARGS="--standalone --onefile --include-data-dir=pytransform=pytransform --output-dir=../build_output --output-filename=${{ env.ASSET_NAME }}"
           # 윈도우 환경일 경우, 외부 도구 다운로드를 자동으로 수락하는 옵션을 추가해요.
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             NUITKA_ARGS="$NUITKA_ARGS --assume-yes-for-downloads"
